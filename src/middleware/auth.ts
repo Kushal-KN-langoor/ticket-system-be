@@ -16,14 +16,12 @@ declare global {
 }
 
 export function authenticate(req: Request, res: Response, next: NextFunction) {
-  // Reads from Postman Authorization tab → Bearer Token
-  const authHeader = req.headers["authorization"];
+  // Reads from Postman Headers tab → key: x-auth-token
+  const token = req.headers["x-auth-token"] as string | undefined;
 
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+  if (!token) {
     return res.status(401).json({ message: "No token provided" });
   }
-
-  const token = authHeader.split(" ")[1];
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as AuthPayload;

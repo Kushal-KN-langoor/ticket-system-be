@@ -5,48 +5,33 @@ import prisma from "../lib/prisma";
 const router = Router();
 
 // ─────────────────────────────────────────────
-// POST /api/tickets — Create a ticket
+// POST /api/tickets — Admin + Editor can create
 // ─────────────────────────────────────────────
-router.post("/", authenticate, async (req: Request, res: Response) => {
+router.post("/", authenticate, requireRole(["Admin", "Editor"]), async (req: Request, res: Response) => {
   try {
-    const {
-      title,
-      description,
-      status,
-      priority,
-      ticket_order,
-      project_id,
-      assigned_to,
-      due_date,
-    } = req.body;
+    const { title, description, status, priority, ticket_order, project_id, assigned_to, due_date } = req.body;
 
-    // Required fields
     if (!title) return res.status(400).json({ message: "title is required" });
     if (!project_id) return res.status(400).json({ message: "project_id is required" });
 
-    // Validate status
     const validStatuses = ["Open", "In Progress", "Closed", "On Hold"];
     if (status && !validStatuses.includes(status)) {
       return res.status(400).json({ message: `status must be one of: ${validStatuses.join(", ")}` });
     }
 
-    // Validate priority
     const validPriorities = ["Low", "Medium", "High", "Critical"];
     if (priority && !validPriorities.includes(priority)) {
       return res.status(400).json({ message: `priority must be one of: ${validPriorities.join(", ")}` });
     }
 
-    // Check project exists
     const project = await prisma.projects.findUnique({ where: { id: project_id } });
     if (!project) return res.status(404).json({ message: "Project not found" });
 
-    // Check assigned user exists (if provided)
     if (assigned_to) {
       const assignee = await prisma.users.findUnique({ where: { id: assigned_to } });
       if (!assignee) return res.status(404).json({ message: "Assigned user not found" });
     }
 
-    // Auto-generate ticket_number: TKT-0001, TKT-0002 ...
     const count = await prisma.tickets.count();
     const ticket_number = `TKT-${String(count + 1).padStart(4, "0")}`;
 
@@ -59,7 +44,7 @@ router.post("/", authenticate, async (req: Request, res: Response) => {
         priority: priority ?? "Medium",
         ticket_order: ticket_order ?? null,
         project_id,
-        created_by: req.user!.id,          // from JWT — who is logged in
+        created_by: req.user!.id,
         assigned_to: assigned_to ?? null,
         due_date: due_date ? new Date(due_date) : null,
       },
@@ -78,7 +63,7 @@ router.post("/", authenticate, async (req: Request, res: Response) => {
 });
 
 // ─────────────────────────────────────────────
-// GET /api/tickets — List all tickets
+// GET /api/tickets — Admin, Editor, User can all view
 // ─────────────────────────────────────────────
 router.get("/", authenticate, async (req: Request, res: Response) => {
   try {
@@ -108,7 +93,7 @@ router.get("/", authenticate, async (req: Request, res: Response) => {
 });
 
 // ─────────────────────────────────────────────
-// GET /api/tickets/:id — Single ticket
+// GET /api/tickets/:id — Admin, Editor, User can all view
 // ─────────────────────────────────────────────
 router.get("/:id", authenticate, async (req: Request, res: Response) => {
   try {
@@ -134,11 +119,21 @@ router.get("/:id", authenticate, async (req: Request, res: Response) => {
 });
 
 // ─────────────────────────────────────────────
-// PUT /api/tickets/:id — Update ticket (Admin + Editor)
+// PUT /api/tickets/:id — Admin + Editor can update (User cannot)
 // ─────────────────────────────────────────────
 router.put("/:id", authenticate, requireRole(["Admin", "Editor"]), async (req: Request, res: Response) => {
   try {
     const { title, description, status, priority, ticket_order, assigned_to, due_date, closed_at } = req.body;
+
+    const validStatuses = ["Open", "In Progress", "Closed", "On Hold"];
+    if (status && !validStatuses.includes(status)) {
+      return res.status(400).json({ message: `status must be one of: ${validStatuses.join(", ")}` });
+    }
+
+    const validPriorities = ["Low", "Medium", "High", "Critical"];
+    if (priority && !validPriorities.includes(priority)) {
+      return res.status(400).json({ message: `priority must be one of: ${validPriorities.join(", ")}` });
+    }
 
     const existing = await prisma.tickets.findUnique({ where: { id: req.params.id } });
     if (!existing) return res.status(404).json({ message: "Ticket not found" });
@@ -155,6 +150,11 @@ router.put("/:id", authenticate, requireRole(["Admin", "Editor"]), async (req: R
         ...(due_date !== undefined && { due_date: due_date ? new Date(due_date) : null }),
         ...(closed_at !== undefined && { closed_at: closed_at ? new Date(closed_at) : null }),
         updated_at: new Date(),
+      },
+      include: {
+        users_tickets_created_byTousers: { select: { id: true, name: true, email: true } },
+        users_tickets_assigned_toTousers: { select: { id: true, name: true, email: true } },
+        projects: { select: { id: true, name: true } },
       },
     });
 
