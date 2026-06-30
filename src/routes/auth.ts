@@ -1,41 +1,19 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import crypto from "crypto";
 import prisma from "../lib/prisma";
 
 const router = Router();
 
 const ALLOWED_ROLES = ["Admin", "Editor", "User"];
 const DEFAULT_ROLE = "User";
-const REFRESH_TOKEN_HOURS = Number(process.env.REFRESH_TOKEN_EXPIRES_HOURS || 2);
 
-function signAccessToken(user: { id: string; email: string; role: string }) {
+function signToken(user: { id: string; email: string; role: string }) {
   return jwt.sign(
     { id: user.id, email: user.email, role: user.role },
     process.env.JWT_SECRET as string,
-    { expiresIn: (process.env.ACCESS_TOKEN_EXPIRES_IN || "15m") as any }
+    { expiresIn: (process.env.JWT_EXPIRES_IN || "1h") as any }
   );
-}
-
-function hashToken(token: string) {
-  return crypto.createHash("sha256").update(token).digest("hex");
-}
-
-function getErrorDetail(error: any) {
-  return error?.message?.split("\n").pop() ?? String(error);
-}
-
-async function issueRefreshToken(userId: string) {
-  const rawToken = crypto.randomBytes(40).toString("hex");
-  const tokenHash = hashToken(rawToken);
-  const expiresAt = new Date(Date.now() + REFRESH_TOKEN_HOURS * 60 * 60 * 1000);
-
-  await prisma.refresh_tokens.create({
-    data: { user_id: userId, token_hash: tokenHash, expires_at: expiresAt },
-  });
-
-  return rawToken;
 }
 
 function toSafeUser(user: any) {
@@ -65,16 +43,14 @@ router.post("/signup", async (req, res) => {
       data: { name, email: normalizedEmail, password_hash, role: finalRole },
     });
 
-    const accessToken = signAccessToken(user);
-    const refreshToken = await issueRefreshToken(user.id);
-
-    res.status(201).json({ accessToken, refreshToken, user: toSafeUser(user) });
+    const token = signToken(user);
+    res.status(201).json({ token, user: toSafeUser(user) });
   } catch (error: any) {
     if (error.code === "P2002") {
       return res.status(409).json({ message: "An account with this email already exists" });
     }
     console.error(error);
-    res.status(500).json({ message: "Error creating user", detail: getErrorDetail(error) });
+    res.status(500).json({ message: "Error creating user" });
   }
 });
 
@@ -96,62 +72,12 @@ router.post("/login", async (req, res) => {
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
-    const accessToken = signAccessToken(user);
-    const refreshToken = await issueRefreshToken(user.id);
-
-    res.json({ accessToken, refreshToken, user: toSafeUser(user) });
-  } catch (error: any) {
+    const token = signToken(user);
+    res.json({ token, user: toSafeUser(user) });
+  } catch (error) {
     console.error(error);
-    res.status(500).json({ message: "Error logging in", detail: getErrorDetail(error) });
+    res.status(500).json({ message: "Error logging in" });
   }
 });
 
-router.post("/refresh", async (req, res) => {
-  try {
-    const refreshToken = req.headers["x-refresh-token"] as string | undefined;
-    if (!refreshToken) {
-      return res.status(401).json({ message: "No refresh token provided" });
-    }
-
-    const tokenHash = hashToken(refreshToken);
-    const stored = await prisma.refresh_tokens.findUnique({ where: { token_hash: tokenHash } });
-
-    if (!stored || stored.expires_at < new Date()) {
-      return res.status(401).json({ message: "Invalid or expired refresh token" });
-    }
-
-    const user = await prisma.users.findUnique({ where: { id: stored.user_id } });
-    if (!user) {
-      return res.status(401).json({ message: "User no longer exists" });
-    }
-
-    await prisma.refresh_tokens.delete({ where: { id: stored.id } });
-
-    const accessToken = signAccessToken(user);
-    const newRefreshToken = await issueRefreshToken(user.id);
-
-    res.json({ accessToken, refreshToken: newRefreshToken });
-  } catch (error: any) {
-    console.error(error);
-    res.status(500).json({ message: "Error refreshing token", detail: getErrorDetail(error) });
-  }
-});
-
-router.post("/logout", async (req, res) => {
-  try {
-    const refreshToken = req.headers["x-refresh-token"] as string | undefined;
-    if (!refreshToken) {
-      return res.status(400).json({ message: "No refresh token provided" });
-    }
-
-    const tokenHash = hashToken(refreshToken);
-    await prisma.refresh_tokens.deleteMany({ where: { token_hash: tokenHash } });
-
-    res.json({ message: "Logged out" });
-  } catch (error: any) {
-    console.error(error);
-    res.status(500).json({ message: "Error logging out", detail: getErrorDetail(error) });
-  }
-});
-
-export default router;
+export default router;                    
