@@ -1,14 +1,12 @@
 import { Router } from "express";
 import userRoutes from "./users";
-import authRoutes from "./auth";          
+import authRoutes from "./auth";
+import ticketRoutes from "./tickets";
 
 const router = Router();
 
-router.get("/health", (_req, res) => {
-  res.json({ status: "ok" });
-});
-
-router.use("/auth", authRoutes);          
+router.use("/auth", authRoutes);
 router.use("/users", userRoutes);
+router.use("/tickets", ticketRoutes);
 
 export default router;
