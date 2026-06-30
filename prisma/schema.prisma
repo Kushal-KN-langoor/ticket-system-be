@@ -1,0 +1,104 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model attachments {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ticket_id   String?   @db.Uuid
+  comment_id  String?   @db.Uuid
+  user_id     String    @db.Uuid
+  file_name   String    @db.VarChar(255)
+  file_url    String
+  file_type   String?   @db.VarChar(100)
+  uploaded_at DateTime? @default(now()) @db.Timestamptz(6)
+  comments    comments? @relation(fields: [comment_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_attachment_comment")
+  tickets     tickets?  @relation(fields: [ticket_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_attachment_ticket")
+  users       users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_attachment_user")
+}
+
+model comments {
+  id           String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ticket_id    String        @db.Uuid
+  user_id      String        @db.Uuid
+  comment_text String
+  created_at   DateTime?     @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime?     @default(now()) @db.Timestamptz(6)
+  attachments  attachments[]
+  tickets      tickets       @relation(fields: [ticket_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_comment_ticket")
+  users        users         @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_comment_user")
+}
+
+model project_members {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  project_id String   @db.Uuid
+  user_id    String   @db.Uuid
+  projects   projects @relation(fields: [project_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_project_member_project")
+  users      users    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_project_member_user")
+
+  @@unique([project_id, user_id], map: "unique_project_member")
+}
+
+model projects {
+  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name            String            @db.VarChar(255)
+  description     String?
+  created_at      DateTime?         @default(now()) @db.Timestamptz(6)
+  user_id         String            @db.Uuid
+  project_members project_members[]
+  users           users             @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_project_owner")
+  tickets         tickets[]
+}
+
+model ticket_activity_logs {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ticket_id  String    @db.Uuid
+  user_id    String    @db.Uuid
+  created_at DateTime? @default(now()) @db.Timestamptz(6)
+  tickets    tickets   @relation(fields: [ticket_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_activity_ticket")
+  users      users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_activity_user")
+}
+
+model tickets {
+  id                               String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ticket_number                    String                 @unique @db.VarChar(50)
+  title                            String                 @db.VarChar(255)
+  description                      String?
+  status                           String?                @db.VarChar(50)
+  ticket_order                     String?                @db.VarChar(50)
+  priority                         String?                @db.VarChar(50)
+  project_id                       String                 @db.Uuid
+  created_by                       String                 @db.Uuid
+  assigned_to                      String?                @db.Uuid
+  due_date                         DateTime?              @db.Timestamptz(6)
+  created_at                       DateTime?              @default(now()) @db.Timestamptz(6)
+  updated_at                       DateTime?              @default(now()) @db.Timestamptz(6)
+  closed_at                        DateTime?              @db.Timestamptz(6)
+  attachments                      attachments[]
+  comments                         comments[]
+  ticket_activity_logs             ticket_activity_logs[]
+  users_tickets_assigned_toTousers users?                 @relation("tickets_assigned_toTousers", fields: [assigned_to], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_ticket_assignee")
+  users_tickets_created_byTousers  users                  @relation("tickets_created_byTousers", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_ticket_creator")
+  projects                         projects               @relation(fields: [project_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ticket_project")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model users {
+  id                                 String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                               String                 @db.VarChar(255)
+  email                              String                 @unique @db.VarChar(255)
+  password_hash                      String
+  role                               String                 @db.VarChar(20)
+  created_at                         DateTime?              @default(now()) @db.Timestamptz(6)
+  attachments                        attachments[]
+  comments                           comments[]
+  project_members                    project_members[]
+  projects                           projects[]
+  ticket_activity_logs               ticket_activity_logs[]
+  tickets_tickets_assigned_toTousers tickets[]              @relation("tickets_assigned_toTousers")
+  tickets_tickets_created_byTousers  tickets[]              @relation("tickets_created_byTousers")
+}
