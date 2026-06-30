@@ -4,9 +4,6 @@ import prisma from "../lib/prisma";
 
 const router = Router();
 
-// ─────────────────────────────────────────────
-// POST /api/tickets — Admin + Editor can create
-// ─────────────────────────────────────────────
 router.post("/", authenticate, requireRole(["Admin", "Editor"]), async (req: Request, res: Response) => {
   try {
     const { title, description, status, priority, ticket_order, project_id, assigned_to, due_date } = req.body;
@@ -24,11 +21,11 @@ router.post("/", authenticate, requireRole(["Admin", "Editor"]), async (req: Req
       return res.status(400).json({ message: `priority must be one of: ${validPriorities.join(", ")}` });
     }
 
-    const project = await prisma.projects.findUnique({ where: { id: project_id } });
+    const project = await prisma.projects.findUnique({ where: { id: project_id as string } });
     if (!project) return res.status(404).json({ message: "Project not found" });
 
     if (assigned_to) {
-      const assignee = await prisma.users.findUnique({ where: { id: assigned_to } });
+      const assignee = await prisma.users.findUnique({ where: { id: assigned_to as string } });
       if (!assignee) return res.status(404).json({ message: "Assigned user not found" });
     }
 
@@ -62,9 +59,6 @@ router.post("/", authenticate, requireRole(["Admin", "Editor"]), async (req: Req
   }
 });
 
-// ─────────────────────────────────────────────
-// GET /api/tickets — Admin, Editor, User can all view
-// ─────────────────────────────────────────────
 router.get("/", authenticate, async (req: Request, res: Response) => {
   try {
     const { project_id, status, priority, assigned_to } = req.query;
@@ -92,13 +86,10 @@ router.get("/", authenticate, async (req: Request, res: Response) => {
   }
 });
 
-// ─────────────────────────────────────────────
-// GET /api/tickets/:id — Admin, Editor, User can all view
-// ─────────────────────────────────────────────
 router.get("/:id", authenticate, async (req: Request, res: Response) => {
   try {
     const ticket = await prisma.tickets.findUnique({
-      where: { id: req.params.id },
+      where: { id: req.params.id as string },
       include: {
         users_tickets_created_byTousers: { select: { id: true, name: true, email: true } },
         users_tickets_assigned_toTousers: { select: { id: true, name: true, email: true } },
@@ -118,9 +109,6 @@ router.get("/:id", authenticate, async (req: Request, res: Response) => {
   }
 });
 
-// ─────────────────────────────────────────────
-// PUT /api/tickets/:id — Admin + Editor can update (User cannot)
-// ─────────────────────────────────────────────
 router.put("/:id", authenticate, requireRole(["Admin", "Editor"]), async (req: Request, res: Response) => {
   try {
     const { title, description, status, priority, ticket_order, assigned_to, due_date, closed_at } = req.body;
@@ -135,11 +123,11 @@ router.put("/:id", authenticate, requireRole(["Admin", "Editor"]), async (req: R
       return res.status(400).json({ message: `priority must be one of: ${validPriorities.join(", ")}` });
     }
 
-    const existing = await prisma.tickets.findUnique({ where: { id: req.params.id } });
+    const existing = await prisma.tickets.findUnique({ where: { id: req.params.id as string } });
     if (!existing) return res.status(404).json({ message: "Ticket not found" });
 
     const updated = await prisma.tickets.update({
-      where: { id: req.params.id },
+      where: { id: req.params.id as string },
       data: {
         ...(title && { title }),
         ...(description !== undefined && { description }),
@@ -164,15 +152,12 @@ router.put("/:id", authenticate, requireRole(["Admin", "Editor"]), async (req: R
   }
 });
 
-// ─────────────────────────────────────────────
-// DELETE /api/tickets/:id — Admin only
-// ─────────────────────────────────────────────
 router.delete("/:id", authenticate, requireRole(["Admin"]), async (req: Request, res: Response) => {
   try {
-    const existing = await prisma.tickets.findUnique({ where: { id: req.params.id } });
+    const existing = await prisma.tickets.findUnique({ where: { id: req.params.id as string } });
     if (!existing) return res.status(404).json({ message: "Ticket not found" });
 
-    await prisma.tickets.delete({ where: { id: req.params.id } });
+    await prisma.tickets.delete({ where: { id: req.params.id as string } });
     res.json({ message: "Ticket deleted successfully" });
   } catch (error: any) {
     res.status(500).json({ message: "Failed to delete ticket", detail: error.message });
