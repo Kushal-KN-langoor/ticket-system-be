@@ -4,7 +4,12 @@ import prisma from "../lib/prisma";
 import { authenticate } from "../middleware/auth";
 
 const router = Router();
-
+router.get("/status", (req: Request, res: Response) => {
+  res.status(200).json({
+    status: "ok",
+    module: "project creation"
+  });
+});
 type AddMemberBody = {
   members: {
     user_id?: string;
