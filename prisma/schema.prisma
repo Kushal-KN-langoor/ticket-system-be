@@ -58,6 +58,7 @@ model ticket_activity_logs {
   id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   ticket_id  String    @db.Uuid
   user_id    String    @db.Uuid
+  action     String?   @db.VarChar(255)
   created_at DateTime? @default(now()) @db.Timestamptz(6)
   tickets    tickets   @relation(fields: [ticket_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_activity_ticket")
   users      users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_activity_user")
