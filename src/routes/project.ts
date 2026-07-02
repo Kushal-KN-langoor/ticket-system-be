@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import bcrypt from "bcryptjs";
 import prisma from "../lib/prisma";
-import { authenticate, requireRole } from "../middleware/auth";
+import { authenticate, requireRole, requireProjectSuperAdmin } from "../middleware/auth";
 
 const router = Router();
 
@@ -15,20 +15,15 @@ type AddMemberBody = {
   }[];
 };
 
-// POST /api/projects — Admin only
+// POST /api/projects — Admin only, creator becomes the project's super admin
 router.post("/", authenticate, requireRole(["Admin"]), async (req: Request, res: Response): Promise<void> => {
   try {
     const { name, description } = req.body;
     const userId = req.user?.id;
 
-    if (!userId) {
-      res.status(401).json({ status: "401", message: "Unauthorized" });
-      return;
-    }
-
+    if (!userId) { res.status(401).json({ status: "401", message: "Unauthorized" }); return; }
     if (!name || typeof name !== "string" || !name.trim()) {
-      res.status(400).json({ status: "400", message: "Project name is required" });
-      return;
+      res.status(400).json({ status: "400", message: "Project name is required" }); return;
     }
 
     const project = await prisma.projects.create({
@@ -36,13 +31,10 @@ router.post("/", authenticate, requireRole(["Admin"]), async (req: Request, res:
         name: name.trim(),
         description: typeof description === "string" ? description.trim() : null,
         users: { connect: { id: userId } },
-        project_members: {
-          create: { users: { connect: { id: userId } } },
-        },
+        super_admin_id: userId,
+        project_members: { create: { users: { connect: { id: userId } } } },
       },
-      include: {
-        project_members: { select: { user_id: true } },
-      },
+      include: { project_members: { select: { user_id: true } } },
     });
 
     res.status(201).json({ status: "201", message: "Project created successfully", project });
@@ -52,7 +44,64 @@ router.post("/", authenticate, requireRole(["Admin"]), async (req: Request, res:
   }
 });
 
-// POST /api/projects/:projectId/members — project owner only
+// PATCH /api/projects/:projectId/super-admin — only the current super admin can hand it off
+router.patch(
+  "/:projectId/super-admin",
+  authenticate,
+  requireProjectSuperAdmin,
+  async (req: Request<{ projectId: string }>, res: Response): Promise<void> => {
+    try {
+      const { projectId } = req.params;
+      const { user_id } = req.body;
+
+      if (!user_id || typeof user_id !== "string") {
+        res.status(400).json({ status: "400", message: "user_id is required" }); return;
+      }
+
+      const isMember = await prisma.project_members.findFirst({
+        where: { project_id: projectId, user_id },
+      });
+      if (!isMember) {
+        res.status(400).json({ status: "400", message: "User must be a member of this project" }); return;
+      }
+
+      const updated = await prisma.projects.update({
+        where: { id: projectId },
+        data: { super_admin_id: user_id },
+      });
+
+      res.json({ status: "200", message: "Super admin updated successfully", project: updated });
+    } catch (error) {
+      console.error("Update super admin error:", error);
+      res.status(500).json({ status: "500", message: "Internal server error" });
+    }
+  }
+);
+
+// GET /api/projects/:projectId/members — get all members for assignee dropdown
+router.get("/:projectId/members", authenticate, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { projectId } = req.params;
+
+    const project = await prisma.projects.findUnique({ where: { id: projectId as string } });
+    if (!project) { res.status(404).json({ status: "404", message: "Project not found" }); return; }
+
+    const members = await prisma.project_members.findMany({
+      where: { project_id: projectId as string },
+      include: {
+        users: { select: { id: true, name: true, email: true, role: true } },
+      },
+    });
+
+    const users = members.map((m) => m.users);
+    res.json({ status: "200", total: users.length, members: users });
+  } catch (error) {
+    console.error("Get members error:", error);
+    res.status(500).json({ status: "500", message: "Internal server error" });
+  }
+});
+
+// POST /api/projects/:projectId/members — add members
 router.post(
   "/:projectId/members",
   authenticate,
@@ -62,31 +111,15 @@ router.post(
       const { members } = req.body;
       const loggedInUserId = req.user?.id;
 
-      if (!loggedInUserId) {
-        res.status(401).json({ status: "401", message: "Unauthorized" });
-        return;
-      }
-
-      if (!projectId) {
-        res.status(400).json({ status: "400", message: "Project id is required" });
-        return;
-      }
-
+      if (!loggedInUserId) { res.status(401).json({ status: "401", message: "Unauthorized" }); return; }
       if (!Array.isArray(members) || members.length === 0) {
-        res.status(400).json({ status: "400", message: "members array is required" });
-        return;
+        res.status(400).json({ status: "400", message: "members array is required" }); return;
       }
 
       const project = await prisma.projects.findFirst({ where: { id: projectId } });
-
-      if (!project) {
-        res.status(404).json({ status: "404", message: "Project not found" });
-        return;
-      }
-
+      if (!project) { res.status(404).json({ status: "404", message: "Project not found" }); return; }
       if (project.user_id !== loggedInUserId) {
-        res.status(403).json({ status: "403", message: "Only project owner can add members" });
-        return;
+        res.status(403).json({ status: "403", message: "Only project owner can add members" }); return;
       }
 
       const addedMembers: { user_id: string }[] = [];
@@ -96,32 +129,22 @@ router.post(
         const memberUserId = typeof member.user_id === "string" ? member.user_id : undefined;
 
         if (!memberUserId && !email) {
-          res.status(400).json({ status: "400", message: "Each member must have user_id or email" });
-          return;
+          res.status(400).json({ status: "400", message: "Each member must have user_id or email" }); return;
         }
 
         let user = null;
-
         if (memberUserId) {
           user = await prisma.users.findUnique({ where: { id: memberUserId } });
-          if (!user) {
-            res.status(404).json({ status: "404", message: `User not found: ${memberUserId}` });
-            return;
-          }
+          if (!user) { res.status(404).json({ status: "404", message: `User not found: ${memberUserId}` }); return; }
         }
-
-        if (!user && email) {
-          user = await prisma.users.findUnique({ where: { email } });
-        }
+        if (!user && email) user = await prisma.users.findUnique({ where: { email } });
 
         if (!user) {
           if (!email || !member.name || !member.password) {
-            res.status(400).json({ status: "400", message: "New user requires name, email and password" });
-            return;
+            res.status(400).json({ status: "400", message: "New user requires name, email and password" }); return;
           }
           if (member.password.length < 8) {
-            res.status(400).json({ status: "400", message: "Password must be at least 8 characters" });
-            return;
+            res.status(400).json({ status: "400", message: "Password must be at least 8 characters" }); return;
           }
           const password_hash = await bcrypt.hash(member.password, 10);
           user = await prisma.users.create({
