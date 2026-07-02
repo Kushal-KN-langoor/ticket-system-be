@@ -49,8 +49,10 @@ model projects {
   description     String?
   created_at      DateTime?         @default(now()) @db.Timestamptz(6)
   user_id         String            @db.Uuid
+  super_admin_id  String?           @db.Uuid
   project_members project_members[]
   users           users             @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_project_owner")
+  super_admin     users?            @relation("ProjectSuperAdmin", fields: [super_admin_id], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_project_super_admin")
   tickets         tickets[]
 }
 
@@ -102,7 +104,8 @@ model users {
   ticket_activity_logs               ticket_activity_logs[]
   tickets_tickets_assigned_toTousers tickets[]              @relation("tickets_assigned_toTousers")
   tickets_tickets_created_byTousers  tickets[]              @relation("tickets_created_byTousers")
-  refresh_tokens refresh_tokens[]
+  refresh_tokens                     refresh_tokens[]
+  super_admin_of_projects            projects[]             @relation("ProjectSuperAdmin")
 }
 model refresh_tokens {
   id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
