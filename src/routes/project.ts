@@ -4,12 +4,7 @@ import prisma from "../lib/prisma";
 import { authenticate, requireRole, requireProjectSuperAdmin } from "../middleware/auth";
 
 const router = Router();
-router.get("/status", (req: Request, res: Response) => {
-  res.status(200).json({
-    status: "ok",
-    module: "project creation"
-  });
-});
+
 type AddMemberBody = {
   members: {
     user_id?: string;
@@ -36,7 +31,7 @@ router.post("/", authenticate, requireRole(["Admin"]), async (req: Request, res:
         name: name.trim(),
         description: typeof description === "string" ? description.trim() : null,
         users: { connect: { id: userId } },
-        super_admin_id: userId,
+        super_admin: { connect: { id: userId } },
         project_members: { create: { users: { connect: { id: userId } } } },
       },
       include: { project_members: { select: { user_id: true } } },
