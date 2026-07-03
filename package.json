@@ -6,19 +6,22 @@
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
-    "@types/multer": "^2.2.0",
+    "@supabase/supabase-js": "^2.110.0",
     "bcryptjs": "^2.4.3",
     "dotenv": "^16.6.1",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.2.0",
-    "prisma": "^6.19.3"
+    "prisma": "^6.19.3",
+    "uuid": "^14.0.1"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
-    "@types/node": "^22.0.0",
+    "@types/multer": "^2.2.0",
+    "@types/node": "^22.20.0",
+    "@types/uuid": "^10.0.0",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.7.0"
   }
