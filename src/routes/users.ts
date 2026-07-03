@@ -31,6 +31,65 @@ router.get("/me", authenticate, async (req, res) => {
   }
 });
 
+// GET /api/users/:id/dashboard — projects + assigned tickets + status counts
+router.get("/:id/dashboard", authenticate, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const [memberships, tickets] = await Promise.all([
+      prisma.project_members.findMany({
+        where: { user_id: id as string },
+        include: { projects: true },
+      }),
+      prisma.tickets.findMany({
+        where: { assigned_to: id as string },
+        include: {
+          projects: { select: { id: true, name: true } },
+        },
+        orderBy: { created_at: "desc" },
+      }),
+    ]);
+
+    const projects = memberships.map((m) => m.projects);
+
+    const ticketCounts: Record<string, number> = {};
+    for (const t of tickets) {
+      const key = t.status ?? "Unknown";
+      ticketCounts[key] = (ticketCounts[key] || 0) + 1;
+    }
+
+    res.json({
+      status: "200",
+      projects,
+      tickets,
+      ticket_counts: ticketCounts,
+      total_projects: projects.length,
+      total_tickets: tickets.length,
+    });
+  } catch (error: any) {
+    console.error(error);
+    res.status(500).json({ status: "500", message: "Failed to fetch dashboard", detail: error.message });
+  }
+});
+
+// GET /api/users/:id/projects — projects this user is a member of
+router.get("/:id/projects", authenticate, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const memberships = await prisma.project_members.findMany({
+      where: { user_id: id as string },
+      include: { projects: true },
+    });
+
+    const projects = memberships.map((m) => m.projects);
+    res.json({ status: "200", total: projects.length, projects });
+  } catch (error: any) {
+    console.error(error);
+    res.status(500).json({ status: "500", message: "Failed to fetch projects", detail: error.message });
+  }
+});
+
 // PATCH /api/users/:id/role — SuperAdmin only. Global role change.
 router.patch("/:id/role", authenticate, requireRole(["SuperAdmin"]), async (req: Request, res: Response) => {
   try {

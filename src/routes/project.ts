@@ -22,7 +22,7 @@ type AddMemberBody = {
   }[];
 };
 
-// ✅ Only Admin can create projects
+//Only Admin can create projects
 router.post(
   "/",
   authenticate,
