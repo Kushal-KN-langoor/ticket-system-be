@@ -23,7 +23,9 @@ function hashToken(token: string) {
 }
 
 function getErrorDetail(error: any) {
-  return error?.message?.split("\n").pop() ?? String(error);
+  const msg = error?.message ?? String(error);
+  const lines = msg.split("\n").map((l: string) => l.trim()).filter(Boolean);
+  return lines.slice(-5).join(" | ");
 }
 
 async function issueRefreshToken(userId: string) {
@@ -43,6 +45,9 @@ function toSafeUser(user: any) {
 
 router.post("/signup", async (req, res) => {
   try {
+    if (!req.body || typeof req.body !== "object") {
+      return res.status(400).json({ status: "400", message: "Request body is missing or not valid JSON. Check that Content-Type: application/json is set in Postman." });
+    }
     const { name, email, password, role } = req.body;
     if (!name || !email || !password) {
       return res.status(400).json({ status: "400", message: "name, email and password are required" });
