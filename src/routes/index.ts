@@ -6,6 +6,10 @@ import ticketRoutes from "./tickets";
 
 const router = Router();
 
+router.get("/health", (_req, res) => {
+    res.json({ status: "ok" });
+});
+
 router.use("/auth", authRoutes);
 router.use("/users", userRoutes);
 router.use("/projects", projectRoutes);
