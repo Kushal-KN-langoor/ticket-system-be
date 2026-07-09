@@ -13,7 +13,7 @@ async function isProjectMember(projectId: string, userId: string): Promise<boole
 }
 
 // POST /api/tickets — Admin + Editor only
-router.post("/", authenticate, requireRole(["Admin", "Editor"]), async (req: Request, res: Response) => {
+router.post("/", authenticate, requireRole(["Admin", "Editor", "User"]), async (req: Request, res: Response) => {
   try {
     const { title, description, status, priority, ticket_order, project_id, assigned_to, due_date } = req.body;
 
