@@ -4,6 +4,7 @@ import authRoutes from "./auth";
 import projectRoutes from "./project";
 import ticketRoutes from "./tickets";
 import attachmentRoutes from "./attachments";
+import summaryRoutes from "./summary";
 const router = Router();
 
 router.get("/health", (_req, res) => {
@@ -15,6 +16,7 @@ router.use("/users", userRoutes);
 router.use("/project", projectRoutes);
 router.use("/tickets", ticketRoutes);
 router.use("/attachments", attachmentRoutes);
+router.use("/summary", summaryRoutes);
 
 
 export default router;
