@@ -1,6 +1,9 @@
 import { Router, Request, Response } from "express";
 import { authenticate, requireRole } from "../middleware/auth";
+import { upload } from "../middleware/upload";
 import prisma from "../lib/prisma";
+import { supabase } from "../lib/supabase";
+import { v4 as uuid } from "uuid";
 
 const router = Router();
 
@@ -94,8 +97,8 @@ router.get("/", authenticate, async (req: Request, res: Response) => {
         users_tickets_created_byTousers: { select: { id: true, name: true, email: true } },
         users_tickets_assigned_toTousers: { select: { id: true, name: true, email: true } },
         projects: { select: { id: true, name: true } },
-        comments: true,
-        attachments: true,
+        comments: { include: { attachments: true } },
+        attachments: { where: { comment_id: null } },
       },
     });
 
@@ -130,10 +133,13 @@ router.get("/:id", authenticate, async (req: Request, res: Response) => {
         users_tickets_assigned_toTousers: { select: { id: true, name: true, email: true } },
         projects: { select: { id: true, name: true } },
         comments: {
-          include: { users: { select: { id: true, name: true, email: true } } },
+          include: {
+            users: { select: { id: true, name: true, email: true } },
+            attachments: true,
+          },
           orderBy: { created_at: "asc" },
         },
-        attachments: true,
+        attachments: { where: { comment_id: null } }, // ticket-level attachments only; comment-level are nested above
         ticket_activity_logs: {
           include: { users: { select: { id: true, name: true, email: true } } },
           orderBy: { created_at: "desc" },
@@ -233,7 +239,8 @@ router.delete("/:id", authenticate, requireRole(["Admin"]), async (req: Request,
 // ─────────────────────────────────────────────
 
 // POST /api/tickets/:id/comments — any authenticated user
-router.post("/:id/comments", authenticate, async (req: Request, res: Response) => {
+// Accepts an optional multipart "file" field to attach a file to the new comment in one request.
+router.post("/:id/comments", authenticate, upload.single("file"), async (req: Request, res: Response) => {
   try {
     const { comment_text } = req.body;
     const ticketId = req.params.id as string;
@@ -278,7 +285,50 @@ router.post("/:id/comments", authenticate, async (req: Request, res: Response) =
       },
     });
 
-    res.status(201).json({ status: "201", message: "Comment added successfully", comment });
+    // Optional file upload attached to this comment
+    let attachment = null;
+    if (req.file) {
+      const extension = req.file.originalname.split(".").pop() || "bin";
+      const filename = `comments/${comment.id}/${uuid()}.${extension}`;
+
+      const { data, error } = await supabase.storage
+        .from(process.env.SUPABASE_BUCKET!)
+        .upload(filename, req.file.buffer, {
+          contentType: req.file.mimetype,
+          upsert: false,
+        });
+
+      if (error) {
+        // Comment is already created; report the upload failure but don't roll back the comment
+        console.error(error);
+        return res.status(201).json({
+          status: "201",
+          message: "Comment added, but file upload failed",
+          comment,
+          attachment_error: error.message,
+        });
+      }
+
+      attachment = await prisma.attachments.create({
+        data: {
+          comment_id: comment.id,
+          user_id: req.user!.id,
+          file_name: req.file.originalname,
+          file_url: data.path,
+          file_type: req.file.mimetype,
+        },
+      });
+
+      await prisma.ticket_activity_logs.create({
+        data: {
+          ticket_id: ticketId,
+          user_id: req.user!.id,
+          action: `uploaded attachment "${req.file.originalname}" on a comment`,
+        } as any,
+      });
+    }
+
+    res.status(201).json({ status: "201", message: "Comment added successfully", comment, attachment });
   } catch (error: any) {
     console.error(error);
     res.status(500).json({ status: "500", message: "Failed to add comment", detail: error.message });

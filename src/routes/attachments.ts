@@ -7,7 +7,7 @@ import { v4 as uuid } from "uuid";
 
 const router = Router();
 
-// POST /api/attachments — upload to a ticket OR a comment
+// POST /api/attachments — upload to a ticket OR a comment (at least one required)
 router.post("/", authenticate, upload.single("file"), async (req: Request, res: Response) => {
   try {
     const { ticket_id, comment_id } = req.body;
@@ -84,7 +84,7 @@ router.post("/", authenticate, upload.single("file"), async (req: Request, res: 
   }
 });
 
-// GET /api/attachments/ticket/:ticket_id — all attachments for a ticket
+// GET /api/attachments/ticket/:ticket_id — ticket-level attachments only (not comment attachments)
 router.get("/ticket/:ticket_id", authenticate, async (req: Request, res: Response) => {
   try {
     const ticket_id = req.params.ticket_id as string;
@@ -94,6 +94,26 @@ router.get("/ticket/:ticket_id", authenticate, async (req: Request, res: Respons
 
     const attachments = await prisma.attachments.findMany({
       where: { ticket_id, comment_id: null }, // only ticket-level attachments
+      orderBy: { uploaded_at: "desc" },
+    });
+
+    return res.json({ status: "200", total: attachments.length, attachments });
+  } catch (error: any) {
+    return res.status(500).json({ status: "500", message: "Failed to list attachments", detail: error.message });
+  }
+});
+
+// GET /api/attachments/ticket/:ticket_id/all — every attachment for a ticket, ticket-level AND from its comments
+router.get("/ticket/:ticket_id/all", authenticate, async (req: Request, res: Response) => {
+  try {
+    const ticket_id = req.params.ticket_id as string;
+
+    const ticket = await prisma.tickets.findUnique({ where: { id: ticket_id } });
+    if (!ticket) return res.status(404).json({ status: "404", message: "Ticket not found" });
+
+    const attachments = await prisma.attachments.findMany({
+      where: { ticket_id },
+      include: { comments: { select: { id: true, comment_text: true } } },
       orderBy: { uploaded_at: "desc" },
     });
 
