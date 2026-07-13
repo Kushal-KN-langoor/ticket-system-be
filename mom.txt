@@ -1,0 +1,21 @@
+assigned_to drop down the assigne name all user within that project
+file and comments
+assignee updates - @ tag ppl
+
+
+
+
+7/7/26
+micro service archi - easier to integrate incase we want to expand it to mobile app
+
+
+points while presenting:
+never say something tell what it is 
+redux disk storage - to store globally
+get to knwo diff between node and express and type
+jwt three part
+
+
+
+
+

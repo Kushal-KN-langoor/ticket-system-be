@@ -41,8 +41,9 @@ router.post("/", authenticate, requireRole(["Admin", "Editor", "User"]), async (
       }
     }
 
-    const count = await prisma.tickets.count();
-    const ticket_number = `TKT-${String(count + 1).padStart(4, "0")}`;
+    const count = await prisma.tickets.count({ where: { project_id } });
+    const shortProjectId = project_id.slice(0, 4).toUpperCase();
+    const ticket_number = `${shortProjectId}-${String(count + 1).padStart(4, "0")}`;  
 
     const ticket = await prisma.tickets.create({
       data: {

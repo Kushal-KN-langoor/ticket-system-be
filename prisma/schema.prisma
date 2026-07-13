@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model attachments {
@@ -68,7 +69,7 @@ model ticket_activity_logs {
 
 model tickets {
   id                               String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  ticket_number                    String                 @unique @db.VarChar(50)
+  ticket_number                    String                 @db.VarChar(50)
   title                            String                 @db.VarChar(255)
   description                      String?
   status                           String?                @db.VarChar(50)
@@ -87,6 +88,7 @@ model tickets {
   users_tickets_assigned_toTousers users?                 @relation("tickets_assigned_toTousers", fields: [assigned_to], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_ticket_assignee")
   users_tickets_created_byTousers  users                  @relation("tickets_created_byTousers", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_ticket_creator")
   projects                         projects               @relation(fields: [project_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ticket_project")
+  @@unique([ticket_number, project_id])
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
