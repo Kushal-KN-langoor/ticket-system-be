@@ -165,6 +165,7 @@ router.post(
 
       if (!loggedInUserId) {
         res.status(401).json({
+          status: "401",
           message: "Unauthorized",
         });
         return;
@@ -172,6 +173,7 @@ router.post(
 
       if (!projectId) {
         res.status(400).json({
+          status: "400",
           message: "Project id is required",
         });
         return;
@@ -179,6 +181,7 @@ router.post(
 
       if (!Array.isArray(members) || members.length === 0) {
         res.status(400).json({
+          status: "400",
           message: "members array is required",
         });
         return;
@@ -192,6 +195,7 @@ router.post(
 
       if (!project) {
         res.status(404).json({
+          status: "404",
           message: "Project not found",
         });
         return;
@@ -199,6 +203,7 @@ router.post(
 
       if (project.user_id !== loggedInUserId) {
         res.status(403).json({
+          status: "403",
           message: "Only project owner can add members",
         });
         return;
@@ -219,6 +224,7 @@ router.post(
 
         if (!memberUserId && !email) {
           res.status(400).json({
+            status: "400",
             message: "Each member must have user_id or email",
           });
           return;
@@ -236,6 +242,7 @@ router.post(
 
           if (!user) {
             res.status(404).json({
+              status: "404",
               message: `User not found: ${memberUserId}`,
             });
             return;
@@ -316,12 +323,14 @@ router.post(
       }
 
       res.status(201).json({
+        status: "201",
         message: "Members added successfully",
         members: addedMembers,
       });
     } catch (error) {
       console.error("Add project members error:", error);
       res.status(500).json({
+        status: "500",
         message: "Internal server error",
       });
     }
