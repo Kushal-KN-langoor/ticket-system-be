@@ -108,6 +108,7 @@ model users {
   tickets_tickets_created_byTousers  tickets[]              @relation("tickets_created_byTousers")
   refresh_tokens                     refresh_tokens[]
   super_admin_of_projects            projects[]             @relation("ProjectSuperAdmin")
+  department                         String?                @db.VarChar(100)
 }
 model refresh_tokens {
   id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid

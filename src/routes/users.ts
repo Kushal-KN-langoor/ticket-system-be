@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import prisma from "../lib/prisma";
 import { authenticate, requireRole } from "../middleware/auth";
+import { DEPARTMENTS } from "../constants/departments";
 
 const router = Router();
 
@@ -9,7 +10,7 @@ const ALLOWED_ROLES = ["SuperAdmin", "Admin", "Editor", "User"];
 router.get("/", authenticate, async (req, res) => {
   try {
     const users = await prisma.users.findMany({
-      select: { id: true, name: true, email: true, role: true, created_at: true },
+      select: { id: true, name: true, email: true, role: true, department: true, created_at: true },
     });
     res.json({ status: "200", total: users.length, users });
   } catch (error) {
@@ -113,6 +114,32 @@ router.patch("/:id/role", authenticate, requireRole(["SuperAdmin"]), async (req:
   } catch (error: any) {
     console.error(error);
     res.status(500).json({ status: "500", message: "Failed to update role", detail: error.message });
+  }
+});
+
+// PATCH /api/users/:id/department — Admin or SuperAdmin only
+router.patch("/:id/department", authenticate, requireRole(["SuperAdmin", "Admin"]), async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { department } = req.body;
+
+    if (!department || !DEPARTMENTS.includes(department)) {
+      return res.status(400).json({ status: "400", message: `department must be one of: ${DEPARTMENTS.join(", ")}` });
+    }
+
+    const targetUser = await prisma.users.findUnique({ where: { id: id as string } });
+    if (!targetUser) return res.status(404).json({ status: "404", message: "User not found" });
+
+    const updated = await prisma.users.update({
+      where: { id: id as string },
+      data: { department },
+      select: { id: true, name: true, email: true, role: true, department: true, created_at: true },
+    });
+
+    res.json({ status: "200", message: "User department updated successfully", user: updated });
+  } catch (error: any) {
+    console.error(error);
+    res.status(500).json({ status: "500", message: "Failed to update department", detail: error.message });
   }
 });
 

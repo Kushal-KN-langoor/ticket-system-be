@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import bcrypt from "bcryptjs";
 import prisma from "../lib/prisma";
 import { authenticate, requireRole, requireProjectSuperAdmin } from "../middleware/auth";
+import { DEPARTMENTS } from "../constants/departments";
 
 const router = Router();
 
@@ -128,17 +129,27 @@ router.patch(
 );
 
 // GET /api/projects/:projectId/members — get all members for assignee dropdown
+// optional ?department=HR to filter members by department
 router.get("/:projectId/members", authenticate, async (req: Request, res: Response): Promise<void> => {
   try {
     const { projectId } = req.params;
+    const { department } = req.query;
+
+    if (department && !DEPARTMENTS.includes(String(department) as any)) {
+      res.status(400).json({ status: "400", message: `department must be one of: ${DEPARTMENTS.join(", ")}` });
+      return;
+    }
 
     const project = await prisma.projects.findUnique({ where: { id: projectId as string } });
     if (!project) { res.status(404).json({ status: "404", message: "Project not found" }); return; }
 
     const members = await prisma.project_members.findMany({
-      where: { project_id: projectId as string },
+      where: {
+        project_id: projectId as string,
+        ...(department && { users: { department: String(department) } }),
+      },
       include: {
-        users: { select: { id: true, name: true, email: true, role: true } },
+        users: { select: { id: true, name: true, email: true, role: true, department: true } },
       },
     });
 
