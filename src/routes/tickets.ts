@@ -78,7 +78,7 @@ router.post("/", authenticate, requireRole(["Admin", "Editor", "User"]), async (
 // GET /api/tickets — all roles, with filters
 router.get("/", authenticate, async (req: Request, res: Response) => {
   try {
-    const { project_id, status, priority, assigned_to, created_by, search, overdue } = req.query;
+   const { project_id, status, priority, assigned_to, created_by, search, overdue } = req.query;
 
     const tickets = await prisma.tickets.findMany({
       where: {

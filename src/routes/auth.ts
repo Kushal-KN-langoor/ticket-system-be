@@ -3,6 +3,8 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import prisma from "../lib/prisma";
+import { DEPARTMENTS } from "../constants/departments";
+
 
 const router = Router();
 
@@ -28,6 +30,26 @@ function getErrorDetail(error: any) {
   return lines.slice(-5).join(" | ");
 }
 
+// Password rule: min 8 chars, at least 1 uppercase, 1 lowercase, 1 number, 1 special char
+function validatePassword(password: string): string | null {
+  if (password.length < 8) {
+    return "Password must be at least 8 characters long";
+  }
+  if (!/[A-Z]/.test(password)) {
+    return "Password must contain at least one uppercase letter";
+  }
+  if (!/[a-z]/.test(password)) {
+    return "Password must contain at least one lowercase letter";
+  }
+  if (!/[0-9]/.test(password)) {
+    return "Password must contain at least one number";
+  }
+  if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
+    return "Password must contain at least one special character";
+  }
+  return null; // valid
+}
+
 async function issueRefreshToken(userId: string) {
   const rawToken = crypto.randomBytes(40).toString("hex");
   const tokenHash = hashToken(rawToken);
@@ -43,17 +65,28 @@ function toSafeUser(user: any) {
   return safe;
 }
 
+// GET /api/auth/departments — public, used to populate the signup dropdown
+router.get("/departments", (_req, res) => {
+  res.json({ status: "200", departments: DEPARTMENTS });
+});
+
 router.post("/signup", async (req, res) => {
   try {
     if (!req.body || typeof req.body !== "object") {
       return res.status(400).json({ status: "400", message: "Request body is missing or not valid JSON. Check that Content-Type: application/json is set in Postman." });
     }
-    const { name, email, password, role } = req.body;
+    const { name, email, password, role, department } = req.body;
     if (!name || !email || !password) {
       return res.status(400).json({ status: "400", message: "name, email and password are required" });
     }
-    if (password.length < 8) {
-      return res.status(400).json({ status: "400", message: "Password must be at least 8 characters" });
+
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      return res.status(400).json({ status: "400", message: passwordError });
+    }
+
+    if (department && !DEPARTMENTS.includes(department)) {
+      return res.status(400).json({ status: "400", message: `department must be one of: ${DEPARTMENTS.join(", ")}` });
     }
     const finalRole = role && ALLOWED_ROLES.includes(role) ? role : DEFAULT_ROLE;
     const normalizedEmail = String(email).toLowerCase().trim();
@@ -65,7 +98,7 @@ router.post("/signup", async (req, res) => {
 
     const password_hash = await bcrypt.hash(password, 10);
     const user = await prisma.users.create({
-      data: { name, email: normalizedEmail, password_hash, role: finalRole },
+      data: { name, email: normalizedEmail, password_hash, role: finalRole, department: department ?? null },
     });
 
     const accessToken = signAccessToken(user);
