@@ -32,16 +32,21 @@ router.get("/me", authenticate, async (req, res) => {
   }
 });
 
-// GET /api/users/:id/dashboard — projects + assigned tickets + status counts
+// GET /api/users/:id/dashboard — projects (own + department-wide) + assigned tickets + status counts
 router.get("/:id/dashboard", authenticate, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    const [memberships, tickets] = await Promise.all([
+    const currentUser = await prisma.users.findUnique({ where: { id: id as string } });
+    if (!currentUser) return res.status(404).json({ status: "404", message: "User not found" });
+
+    const [memberships, tickets, departmentMemberships] = await Promise.all([
+      // projects this user is personally a member of
       prisma.project_members.findMany({
         where: { user_id: id as string },
         include: { projects: true },
       }),
+      // tickets assigned directly to this user
       prisma.tickets.findMany({
         where: { assigned_to: id as string },
         include: {
@@ -49,9 +54,21 @@ router.get("/:id/dashboard", authenticate, async (req: Request, res: Response) =
         },
         orderBy: { created_at: "desc" },
       }),
+      // every project that has ANY member in this user's department (e.g. if an
+      // Admin is a member of 2 projects, both show up; same for colleagues in the same dept)
+      currentUser.department
+        ? prisma.project_members.findMany({
+            where: { users: { department: currentUser.department } },
+            include: { projects: true },
+          })
+        : Promise.resolve([]),
     ]);
 
-    const projects = memberships.map((m) => m.projects);
+    // merge personal memberships + department-wide projects, de-duplicated by project id
+    const projectsMap = new Map<string, (typeof memberships)[number]["projects"]>();
+    for (const m of memberships) projectsMap.set(m.projects.id, m.projects);
+    for (const dm of departmentMemberships) projectsMap.set(dm.projects.id, dm.projects);
+    const projects = Array.from(projectsMap.values());
 
     const ticketCounts: Record<string, number> = {};
     for (const t of tickets) {
@@ -61,6 +78,7 @@ router.get("/:id/dashboard", authenticate, async (req: Request, res: Response) =
 
     res.json({
       status: "200",
+      department: currentUser.department,
       projects,
       tickets,
       ticket_counts: ticketCounts,
