@@ -30,7 +30,7 @@ router.post(
   requireRole(["Admin"]),
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { name, description } = req.body;
+      const { name, description, department } = req.body;
       const userId = req.user?.id;
 
       if (!userId) {
@@ -47,6 +47,13 @@ router.post(
         return;
       }
 
+      if (!department || !DEPARTMENTS.includes(department)) {
+        res.status(400).json({
+          message: `department is required and must be one of: ${DEPARTMENTS.join(", ")}`,
+        });
+        return;
+      }
+
       const project = await prisma.projects.create({
         data: {
           name: name.trim(),
@@ -54,6 +61,7 @@ router.post(
             typeof description === "string"
               ? description.trim()
               : null,
+          department,
 
           users: {
             connect: {
@@ -129,25 +137,15 @@ router.patch(
 );
 
 // GET /api/projects/:projectId/members — get all members for assignee dropdown
-// optional ?department=HR to filter members by department
 router.get("/:projectId/members", authenticate, async (req: Request, res: Response): Promise<void> => {
   try {
     const { projectId } = req.params;
-    const { department } = req.query;
-
-    if (department && !DEPARTMENTS.includes(String(department) as any)) {
-      res.status(400).json({ status: "400", message: `department must be one of: ${DEPARTMENTS.join(", ")}` });
-      return;
-    }
 
     const project = await prisma.projects.findUnique({ where: { id: projectId as string } });
     if (!project) { res.status(404).json({ status: "404", message: "Project not found" }); return; }
 
     const members = await prisma.project_members.findMany({
-      where: {
-        project_id: projectId as string,
-        ...(department && { users: { department: String(department) } }),
-      },
+      where: { project_id: projectId as string },
       include: {
         users: { select: { id: true, name: true, email: true, role: true, department: true } },
       },
