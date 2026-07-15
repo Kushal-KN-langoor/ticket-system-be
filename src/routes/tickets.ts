@@ -43,7 +43,7 @@ router.post("/", authenticate, requireRole(["Admin", "Editor", "User"]), async (
 
     const count = await prisma.tickets.count({ where: { project_id } });
     const shortProjectId = project_id.slice(0, 4).toUpperCase();
-    const ticket_number = `${shortProjectId}-${String(count + 1).padStart(4, "0")}`;  
+    const ticket_number = `${shortProjectId}-${String(count + 1).padStart(4, "0")}`;
 
     const ticket = await prisma.tickets.create({
       data: {
@@ -146,6 +146,65 @@ router.get("/:id", authenticate, async (req: Request, res: Response) => {
     res.json({ status: "200", ticket });
   } catch (error: any) {
     res.status(500).json({ status: "500", message: "Failed to fetch ticket", detail: error.message });
+  }
+});
+
+// PATCH /api/tickets/:id — status-only update, any project member allowed.
+// This is what the Kanban board's drag-and-drop calls. It's intentionally
+// separate from PUT below: PUT is a full edit restricted to Admin/Editor,
+// but any member of the project should be able to move a ticket between
+// columns, so this route checks project membership instead of role.
+router.patch("/:id", authenticate, async (req: Request, res: Response) => {
+  try {
+    const { status } = req.body;
+
+    const validStatuses = ["To Do", "In Progress", "Done", "Backlog", "Blocked", "Ready for QA"];
+    if (!status || !validStatuses.includes(status)) {
+      return res.status(400).json({ status: "400", message: `status must be one of: ${validStatuses.join(", ")}` });
+    }
+
+    const existing = await prisma.tickets.findUnique({ where: { id: req.params.id as string } });
+    if (!existing) return res.status(404).json({ status: "404", message: "Ticket not found" });
+
+    const project = await prisma.projects.findUnique({
+      where: { id: existing.project_id as string },
+      select: { user_id: true, super_admin_id: true },
+    });
+
+    const isMember = await isProjectMember(existing.project_id, req.user!.id);
+    const isOwner = project?.user_id === req.user!.id || project?.super_admin_id === req.user!.id;
+
+    if (!isMember && !isOwner) {
+      return res.status(403).json({ status: "403", message: "Not a member of this project" });
+    }
+
+    if (status === existing.status) {
+      return res.json({ status: "200", message: "No change", ticket: existing });
+    }
+
+    const [updated] = await prisma.$transaction([
+      prisma.tickets.update({
+        where: { id: req.params.id as string },
+        data: { status, updated_at: new Date() },
+        include: {
+          users_tickets_created_byTousers: { select: { id: true, name: true, email: true } },
+          users_tickets_assigned_toTousers: { select: { id: true, name: true, email: true } },
+          projects: { select: { id: true, name: true } },
+        },
+      }),
+      prisma.ticket_activity_logs.create({
+        data: {
+          ticket_id: req.params.id as string,
+          user_id: req.user!.id,
+          action: `status changed from ${existing.status} to ${status}`,
+        } as any,
+      }),
+    ]);
+
+    res.json({ status: "200", message: "Ticket status updated successfully", ticket: updated });
+  } catch (error: any) {
+    console.error(error);
+    res.status(500).json({ status: "500", message: "Failed to update ticket status", detail: error.message });
   }
 });
 

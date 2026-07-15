@@ -51,7 +51,7 @@ router.get("/:projectId", authenticate, async (req: Request, res: Response) => {
     const today = new Date();
     const trend: { day: string; tickets: number }[] = [];
 
-    for (let i = 0; i >= 6; i--) {
+    for (let i = 0; i <= 6; i++) {
       const date = new Date(today);
       date.setDate(today.getDate() - i);
       const dayStart = new Date(date.setHours(0, 0, 0, 0));
@@ -68,7 +68,11 @@ router.get("/:projectId", authenticate, async (req: Request, res: Response) => {
         tickets: count,
       });
     }
-    const dayOrder = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+    // Fixed calendar-week order: Monday -> Sunday, regardless of what day "today" is.
+    // Since the loop above covers exactly the last 7 days, each weekday appears exactly once,
+    // so sorting by this fixed order is safe.
+    const dayOrder = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
     trend.sort((a, b) => dayOrder.indexOf(a.day) - dayOrder.indexOf(b.day));
 
     res.json({
