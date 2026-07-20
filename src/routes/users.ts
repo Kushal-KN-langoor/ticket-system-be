@@ -47,13 +47,28 @@ router.get("/:id/dashboard", authenticate, async (req: Request, res: Response) =
         include: { projects: true },
       }),
       // tickets assigned directly to this user
-      prisma.tickets.findMany({
-        where: { assigned_to: id as string },
-        include: {
-          projects: { select: { id: true, name: true } },
-        },
-        orderBy: { created_at: "desc" },
-      }),
+    prisma.tickets.findMany({
+  where: { assigned_to: id as string },
+  include: {
+    projects: {
+      select: {
+        id: true,
+        name: true,
+      },
+    },
+    statuses: {
+      select: {
+        id: true,
+        name: true,
+        color: true,
+        position: true,
+      },
+    },
+  },
+  orderBy: {
+    created_at: "desc",
+  },
+}),
       // every project that has ANY member in this user's department (e.g. if an
       // Admin is a member of 2 projects, both show up; same for colleagues in the same dept)
       currentUser.department
@@ -72,8 +87,10 @@ router.get("/:id/dashboard", authenticate, async (req: Request, res: Response) =
 
     const ticketCounts: Record<string, number> = {};
     for (const t of tickets) {
-      const key = t.status ?? "Unknown";
+      const key = t.statuses?.name ?? "Unknown";
       ticketCounts[key] = (ticketCounts[key] || 0) + 1;
+
+  
     }
 
     res.json({

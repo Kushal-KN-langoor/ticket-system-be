@@ -7,7 +7,7 @@ const router = Router();
 // GET /api/summary/:projectId — stats for the Summary tab
 router.get("/:projectId", authenticate, async (req: Request, res: Response) => {
   try {
-    const { projectId } = req.params;
+    const projectId = req.params.projectId as string;
     const userId = (req as any).user?.id;
 
     const project = await prisma.projects.findUnique({
@@ -29,22 +29,32 @@ router.get("/:projectId", authenticate, async (req: Request, res: Response) => {
     }
 
     const tickets = await prisma.tickets.findMany({
-      where: { project_id: projectId as string },
-      select: { id: true, status: true, created_at: true },
-    });
+  where: {
+    project_id: projectId,
+  },
+  select: {
+    id: true,
+    created_at: true,
+    statuses: {
+      select: {
+        name: true,
+      },
+    },
+  },
+});
 
     const total = tickets.length;
 
-    const resolved = tickets.filter((t) => t.status === "Done").length;
+    const resolved = tickets.filter((t) => t.statuses?.name === "Done").length;
 
-    const inProgress = tickets.filter((t) => t.status === "In Progress").length;
+    const inProgress = tickets.filter((t) => t.statuses?.name === "In Progress").length;
 
     const open = tickets.filter(
       (t) =>
-        t.status === "To Do" ||
-        t.status === "Backlog" ||
-        t.status === "Blocked" ||
-        t.status === "Ready for QA"
+        t.statuses?.name === "To Do" ||
+        t.statuses?.name === "Backlog" ||
+        t.statuses?.name === "Blocked" ||
+        t.statuses?.name === "Ready for QA"
     ).length;
 
     // Trend: tickets created per day, last 7 days

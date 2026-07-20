@@ -20,10 +20,6 @@ router.post("/", authenticate, requireRole(["Admin", "Editor", "User"]), async (
     if (!title) return res.status(400).json({ status: "400", message: "title is required" });
     if (!project_id) return res.status(400).json({ status: "400", message: "project_id is required" });
 
-    const validStatuses = ["To Do", "In Progress", "Done", "Backlog", "Blocked", "Ready for QA"];
-    if (status && !validStatuses.includes(status)) {
-      return res.status(400).json({ status: "400", message: `status must be one of: ${validStatuses.join(", ")}` });
-    }
 
     const validPriorities = ["Low", "Medium", "High", "Critical"];
     if (priority && !validPriorities.includes(priority)) {
@@ -31,6 +27,25 @@ router.post("/", authenticate, requireRole(["Admin", "Editor", "User"]), async (
     }
 
     const project = await prisma.projects.findUnique({ where: { id: project_id as string } });
+    let statusId: string | null = null;
+
+if (status) {
+  const dbStatus = await prisma.statuses.findFirst({
+    where: {
+      project_id,
+      name: status,
+    },
+  });
+
+  if (!dbStatus) {
+    return res.status(400).json({
+      status: "400",
+      message: "Invalid status",
+    });
+  }
+
+  statusId = dbStatus.id;
+}
     if (!project) return res.status(404).json({ status: "404", message: "Project not found" });
 
     // assigned_to must be a project member
@@ -50,7 +65,7 @@ router.post("/", authenticate, requireRole(["Admin", "Editor", "User"]), async (
         ticket_number,
         title,
         description: description ?? null,
-        status: status ?? "Open",
+        status_id: statusId,
         priority: priority ?? "Medium",
         ticket_order: ticket_order ?? null,
         project_id,
@@ -83,12 +98,16 @@ router.get("/", authenticate, async (req: Request, res: Response) => {
     const tickets = await prisma.tickets.findMany({
       where: {
         ...(project_id && { project_id: String(project_id) }),
-        ...(status && { status: String(status) }),
+        ...(status && {
+  statuses: {
+    name: String(status),
+  },
+}),
         ...(priority && { priority: String(priority) }),
         ...(assigned_to && { assigned_to: String(assigned_to) }),
         ...(created_by && { created_by: String(created_by) }),
         ...(search && { title: { contains: String(search), mode: "insensitive" } }),
-        ...(overdue === "true" && { due_date: { lt: new Date() }, NOT: { status: "Closed" } }),
+        ...(overdue === "true" && { due_date: { lt: new Date() } }),
       },
       orderBy: { created_at: "desc" },
       include: {
@@ -158,13 +177,31 @@ router.patch("/:id", authenticate, async (req: Request, res: Response) => {
   try {
     const { status } = req.body;
 
-    const validStatuses = ["To Do", "In Progress", "Done", "Backlog", "Blocked", "Ready for QA"];
-    if (!status || !validStatuses.includes(status)) {
-      return res.status(400).json({ status: "400", message: `status must be one of: ${validStatuses.join(", ")}` });
-    }
 
-    const existing = await prisma.tickets.findUnique({ where: { id: req.params.id as string } });
-    if (!existing) return res.status(404).json({ status: "404", message: "Ticket not found" });
+  const existing = await prisma.tickets.findUnique({
+  where: { id: req.params.id as string },
+});
+
+if (!existing) {
+  return res.status(404).json({
+    status: "404",
+    message: "Ticket not found",
+  });
+}
+
+const dbStatus = await prisma.statuses.findFirst({
+  where: {
+    project_id: existing.project_id,
+    name: status,
+  },
+});
+
+if (!dbStatus) {
+  return res.status(400).json({
+    status: "400",
+    message: "Invalid status",
+  });
+}
 
     const project = await prisma.projects.findUnique({
       where: { id: existing.project_id as string },
@@ -178,14 +215,14 @@ router.patch("/:id", authenticate, async (req: Request, res: Response) => {
       return res.status(403).json({ status: "403", message: "Not a member of this project" });
     }
 
-    if (status === existing.status) {
+    if (dbStatus.id === existing.status_id) {
       return res.json({ status: "200", message: "No change", ticket: existing });
     }
 
     const [updated] = await prisma.$transaction([
       prisma.tickets.update({
         where: { id: req.params.id as string },
-        data: { status, updated_at: new Date() },
+        data: { status_id:dbStatus.id, updated_at: new Date() },
         include: {
           users_tickets_created_byTousers: { select: { id: true, name: true, email: true } },
           users_tickets_assigned_toTousers: { select: { id: true, name: true, email: true } },
@@ -196,7 +233,7 @@ router.patch("/:id", authenticate, async (req: Request, res: Response) => {
         data: {
           ticket_id: req.params.id as string,
           user_id: req.user!.id,
-          action: `status changed from ${existing.status} to ${status}`,
+          action: `status changed from ${existing.status_id} to ${dbStatus.name}`,
         } as any,
       }),
     ]);
@@ -214,18 +251,42 @@ router.put("/:id", authenticate, requireRole(["Admin", "Editor"]), async (req: R
   try {
     const { title, description, status, priority, ticket_order, assigned_to, due_date, closed_at } = req.body;
 
-    const validStatuses = ["To Do", "In Progress", "Done", "Backlog", "Blocked", "Ready for QA"];
-    if (status && !validStatuses.includes(status)) {
-      return res.status(400).json({ status: "400", message: `status must be one of: ${validStatuses.join(", ")}` });
-    }
 
     const validPriorities = ["Low", "Medium", "High", "Critical"];
     if (priority && !validPriorities.includes(priority)) {
       return res.status(400).json({ status: "400", message: `priority must be one of: ${validPriorities.join(", ")}` });
     }
 
-    const existing = await prisma.tickets.findUnique({ where: { id: req.params.id as string } });
-    if (!existing) return res.status(404).json({ status: "404", message: "Ticket not found" });
+  const existing = await prisma.tickets.findUnique({
+  where: { id: req.params.id as string },
+});
+
+if (!existing) {
+  return res.status(404).json({
+    status: "404",
+    message: "Ticket not found",
+  });
+}
+
+let statusId = existing.status_id;
+
+if (status) {
+  const dbStatus = await prisma.statuses.findFirst({
+    where: {
+      project_id: existing.project_id,
+      name: status,
+    },
+  });
+
+  if (!dbStatus) {
+    return res.status(400).json({
+      status: "400",
+      message: "Invalid status",
+    });
+  }
+
+  statusId = dbStatus.id;
+}
 
     // assigned_to must be a project member
     if (assigned_to !== undefined && assigned_to !== null) {
@@ -237,7 +298,7 @@ router.put("/:id", authenticate, requireRole(["Admin", "Editor"]), async (req: R
 
     // Build action log
     const changes: string[] = [];
-    if (status && status !== existing.status) changes.push(`status changed from ${existing.status} to ${status}`);
+    if (status && statusId !== existing.status_id) changes.push(`status changed to ${status}`);
     if (priority && priority !== existing.priority) changes.push(`priority changed from ${existing.priority} to ${priority}`);
     if (title && title !== existing.title) changes.push(`title updated`);
     if (assigned_to !== undefined && assigned_to !== existing.assigned_to) changes.push(`assignee updated`);
@@ -250,7 +311,7 @@ router.put("/:id", authenticate, requireRole(["Admin", "Editor"]), async (req: R
         data: {
           ...(title && { title }),
           ...(description !== undefined && { description }),
-          ...(status && { status }),
+          ...(status && { status_id: statusId }),
           ...(priority && { priority }),
           ...(ticket_order !== undefined && { ticket_order }),
           ...(assigned_to !== undefined && { assigned_to }),
@@ -258,11 +319,36 @@ router.put("/:id", authenticate, requireRole(["Admin", "Editor"]), async (req: R
           ...(closed_at !== undefined && { closed_at: closed_at ? new Date(closed_at) : null }),
           updated_at: new Date(),
         },
-        include: {
-          users_tickets_created_byTousers: { select: { id: true, name: true, email: true } },
-          users_tickets_assigned_toTousers: { select: { id: true, name: true, email: true } },
-          projects: { select: { id: true, name: true } },
-        },
+     include: {
+  users_tickets_created_byTousers: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+    },
+  },
+  users_tickets_assigned_toTousers: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+    },
+  },
+  projects: {
+    select: {
+      id: true,
+      name: true,
+    },
+  },
+  statuses: {
+    select: {
+      id: true,
+      name: true,
+      color: true,
+      position: true,
+    },
+  },
+},
       }),
       prisma.ticket_activity_logs.create({
         data: { ticket_id: req.params.id as string, user_id: req.user!.id, action } as any,
