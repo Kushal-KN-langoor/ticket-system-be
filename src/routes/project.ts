@@ -12,7 +12,55 @@ router.get("/status", (req: Request, res: Response) => {
     module: "project creation",
   });
 });
+router.get(
+  "/",
+  authenticate,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const userId = req.user?.id;
 
+      const projects = await prisma.projects.findMany({
+        where: {
+          OR: [
+            { user_id: userId },
+            { super_admin_id: userId },
+            {
+              project_members: {
+                some: {
+                  user_id: userId,
+                },
+              },
+            },
+          ],
+        },
+        include: {
+          users: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+        orderBy: {
+          created_at: "desc",
+        },
+      });
+
+      res.status(200).json({
+        status: "200",
+        total: projects.length,
+        projects,
+      });
+    } catch (error) {
+      console.error("Get projects error:", error);
+      res.status(500).json({
+        status: "500",
+        message: "Internal server error",
+      });
+    }
+  }
+);
 type AddMemberBody = {
   members: {
     user_id?: string;
