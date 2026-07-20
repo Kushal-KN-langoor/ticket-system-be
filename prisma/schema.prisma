@@ -23,15 +23,16 @@ model attachments {
 }
 
 model comments {
-  id           String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  ticket_id    String        @db.Uuid
-  user_id      String        @db.Uuid
-  comment_text String
-  created_at   DateTime?     @default(now()) @db.Timestamptz(6)
-  updated_at   DateTime?     @default(now()) @db.Timestamptz(6)
-  attachments  attachments[]
-  tickets      tickets       @relation(fields: [ticket_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_comment_ticket")
-  users        users         @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_comment_user")
+  id            String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ticket_id     String          @db.Uuid
+  user_id       String          @db.Uuid
+  comment_text  String
+  created_at    DateTime?       @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime?       @default(now()) @db.Timestamptz(6)
+  attachments   attachments[]
+  tickets       tickets         @relation(fields: [ticket_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_comment_ticket")
+  users         users           @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_comment_user")
+  notifications notifications[]
 }
 
 model project_members {
@@ -54,7 +55,8 @@ model projects {
   super_admin_id  String?           @db.Uuid
   project_members project_members[]
   users           users             @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_project_owner")
-  super_admin     users?            @relation("ProjectSuperAdmin", fields: [super_admin_id], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_project_super_admin")
+  super_admin     users?            @relation("ProjectSuperAdmin", fields: [super_admin_id], references: [id], onUpdate: NoAction, map: "fk_project_super_admin")
+  statuses        statuses[]
   tickets         tickets[]
 }
 
@@ -73,7 +75,6 @@ model tickets {
   ticket_number                    String                 @db.VarChar(50)
   title                            String                 @db.VarChar(255)
   description                      String?
-  status                           String?                @db.VarChar(50)
   ticket_order                     String?                @db.VarChar(50)
   priority                         String?                @db.VarChar(50)
   project_id                       String                 @db.Uuid
@@ -83,34 +84,41 @@ model tickets {
   created_at                       DateTime?              @default(now()) @db.Timestamptz(6)
   updated_at                       DateTime?              @default(now()) @db.Timestamptz(6)
   closed_at                        DateTime?              @db.Timestamptz(6)
+  status_id                        String?                @db.Uuid
   attachments                      attachments[]
   comments                         comments[]
+  notifications                    notifications[]
   ticket_activity_logs             ticket_activity_logs[]
   users_tickets_assigned_toTousers users?                 @relation("tickets_assigned_toTousers", fields: [assigned_to], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_ticket_assignee")
   users_tickets_created_byTousers  users                  @relation("tickets_created_byTousers", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_ticket_creator")
   projects                         projects               @relation(fields: [project_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_ticket_project")
+  statuses                         statuses?              @relation(fields: [status_id], references: [id], onUpdate: NoAction, map: "fk_ticket_status")
+
   @@unique([ticket_number, project_id])
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model users {
-  id                                 String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name                               String                 @db.VarChar(255)
-  email                              String                 @unique @db.VarChar(255)
-  password_hash                      String
-  role                               String                 @db.VarChar(20)
-  created_at                         DateTime?              @default(now()) @db.Timestamptz(6)
-  attachments                        attachments[]
-  comments                           comments[]
-  project_members                    project_members[]
-  projects                           projects[]
-  ticket_activity_logs               ticket_activity_logs[]
-  tickets_tickets_assigned_toTousers tickets[]              @relation("tickets_assigned_toTousers")
-  tickets_tickets_created_byTousers  tickets[]              @relation("tickets_created_byTousers")
-  refresh_tokens                     refresh_tokens[]
-  super_admin_of_projects            projects[]             @relation("ProjectSuperAdmin")
-  department                         String?                @db.VarChar(100)
+  id                                          String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                                        String                 @db.VarChar(255)
+  email                                       String                 @unique @db.VarChar(255)
+  password_hash                               String
+  role                                        String                 @db.VarChar(20)
+  created_at                                  DateTime?              @default(now()) @db.Timestamptz(6)
+  department                                  String?                @default(dbgenerated("(ARRAY[]::character varying[])::character varying(100)[]")) @db.VarChar(100)
+  attachments                                 attachments[]
+  comments                                    comments[]
+  notifications_notifications_actor_idTousers notifications[]        @relation("notifications_actor_idTousers")
+  notifications_notifications_user_idTousers  notifications[]        @relation("notifications_user_idTousers")
+  project_members                             project_members[]
+  projects                                    projects[]
+  super_admin_of_projects                     projects[]             @relation("ProjectSuperAdmin")
+  refresh_tokens                              refresh_tokens[]
+  ticket_activity_logs                        ticket_activity_logs[]
+  tickets_tickets_assigned_toTousers          tickets[]              @relation("tickets_assigned_toTousers")
+  tickets_tickets_created_byTousers           tickets[]              @relation("tickets_created_byTousers")
 }
+
 model refresh_tokens {
   id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   user_id    String    @db.Uuid
@@ -118,4 +126,33 @@ model refresh_tokens {
   expires_at DateTime  @db.Timestamptz(6)
   created_at DateTime? @default(now()) @db.Timestamptz(6)
   users      users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_refresh_token_user")
+}
+
+model statuses {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  project_id String    @db.Uuid
+  name       String    @db.VarChar(50)
+  color      String?   @db.VarChar(20)
+  position   Int       @default(0)
+  created_at DateTime? @default(now()) @db.Timestamptz(6)
+  projects   projects  @relation(fields: [project_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_status_project")
+  tickets    tickets[]
+
+  @@unique([project_id, name])
+}
+
+model notifications {
+  id                                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id                             String    @db.Uuid
+  actor_id                            String    @db.Uuid
+  ticket_id                           String    @db.Uuid
+  comment_id                          String?   @db.Uuid
+  type                                String    @default("mention")
+  message                             String
+  is_read                             Boolean   @default(false)
+  created_at                          DateTime  @default(now()) @db.Timestamptz(6)
+  users_notifications_actor_idTousers users     @relation("notifications_actor_idTousers", fields: [actor_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  comments                            comments? @relation(fields: [comment_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  tickets                             tickets   @relation(fields: [ticket_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users_notifications_user_idTousers  users     @relation("notifications_user_idTousers", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }
