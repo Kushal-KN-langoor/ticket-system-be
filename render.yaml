@@ -3,7 +3,7 @@ services:
     name: ticketing-backend
     runtime: node
     plan: free
-    buildCommand: npm install && npm run build && npx prisma generate
+    buildCommand: npm install && npm run build && npx prisma generate && npx prisma db push
     startCommand: npm run start
     healthCheckPath: /api/health
     envVars:
